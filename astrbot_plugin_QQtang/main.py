@@ -1,62 +1,63 @@
-from astrbot.api.event import filter, AstrMessageEvent, EventMessageType
-from astrbot.api.star import Context, Star, register
-from astrbot.api.message_components import *
+from astrbot.api.all import *
 import random
 from collections import defaultdict
+import time
 
-@register(
-    "qq_poke_reply",
-    "ttq",
-    "对戳一戳进行反击",
-    "v1.1",
-    "https://github.com/ttq7/astrbot_plugin_QQtang"
-)
-class QQPokeReplyPlugin(Star):
+@register("simple_poke_reply", "Your Name", "简洁版戳一戳回复插件", "1.0.0")
+class SimplePokeReply(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-        self.poke_counts = defaultdict(int)
-        self.config = context.get_plugin_config(self)
+        self.user_poke_counts = defaultdict(int)
+        self.poke_timeout = 180  # 3分钟超时
+        self.default_responses = ["不要戳啦", "痛痛！", "再戳就咬你！"]
+        self.super_reply = "戳死你的AstrBot！"
 
-    @filter.event_message_type(EventMessageType.ALL)
+    @event_message_type(EventMessageType.ALL)
     async def handle_poke(self, event: AstrMessageEvent):
-        # 检查是否是QQ平台的戳一戳消息
+        # 检查是否是QQ平台的戳一戳
         if event.get_platform_name() != "aiocqhttp":
             return
 
-        # 检查消息链中是否包含Poke组件
         if not any(isinstance(msg, Poke) for msg in event.message_obj.message):
             return
 
         user_id = event.get_sender_id()
-        self.poke_counts[user_id] += 1
+        now = time.time()
 
-        # 回戳处理
-        await self.send_poke_back(event, user_id)
+        # 清理超时记录
+        if user_id in self.user_poke_counts:
+            self.user_poke_counts[user_id] = [
+                t for t in self.user_poke_counts[user_id] if now - t < self.poke_timeout
+            ]
 
-        # 回复消息处理
-        reply_msgs = self.config.get("reply_messages", ["不要戳了", "好痛", "啊呀"])
-        max_pokes = self.config.get("max_pokes_before_reply", 3)
-        if self.poke_counts[user_id] <= max_pokes:
-            await event.send(random.choice(reply_msgs))
+        # 记录戳击时间
+        self.user_poke_counts[user_id].append(now)
+        count = len(self.user_poke_counts[user_id])
+
+        # 回复处理
+        if count <= len(self.default_responses):
+            await event.send(self.default_responses[count-1])
         else:
-            await event.send("戳死你的AstrBot！")
-            self.poke_counts[user_id] = 0  # 重置计数
+            await self.send_super_reply(event, user_id)
+            self.user_poke_counts[user_id] = []  # 重置计数
 
-    async def send_poke_back(self, event: AstrMessageEvent, user_id):
-        """发送回戳消息"""
-        from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
-        assert isinstance(event, AiocqhttpMessageEvent)
-
-        # 根据场景选择发送方式
-        if event.get_group_id():
-            await event.bot.api.call_action(
-                'send_group_msg',
-                group_id=event.get_group_id(),
-                message=f'[CQ:poke,qq={user_id}]'
-            )
-        else:
-            await event.bot.api.call_action(
-                'send_private_msg',
-                user_id=user_id,
-                message=f'[CQ:poke,qq={user_id}]'
-            )
+    async def send_super_reply(self, event: AstrMessageEvent, user_id: str):
+        # 发送反击消息
+        await event.send(self.super_reply)
+        
+        # 发送10次回戳
+        if event.get_platform_name() == "aiocqhttp":
+            from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
+            assert isinstance(event, AiocqhttpMessageEvent)
+            client = event.bot
+            group_id = event.get_group_id()
+            
+            for _ in range(10):
+                try:
+                    await client.api.call_action(
+                        'send_poke',
+                        user_id=user_id,
+                        group_id=group_id if group_id else None
+                    )
+                except Exception as e:
+                    pass

@@ -7,11 +7,5 @@
         "items": {
             "type": "string"
         }
-    },
-    "max_pokes_before_reply": {
-        "description": "触发回戳的最大戳击次数",
-        "type": "int",
-        "hint": "超过次数后会回戳并发送指定消息",
-        "default": 3
     }
 }

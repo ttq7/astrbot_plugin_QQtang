@@ -1,8 +1,9 @@
-# helloworld
+# 戳一戳
+戳一戳机器人
 
-AstrBot 插件模板
+# 简介
 
-A template plugin for AstrBot plugin feature
+这是一个基于QQtang机器人的一个插件，用于实现戳一戳的功能，支持群聊和私聊。
 
 # 支持
 
